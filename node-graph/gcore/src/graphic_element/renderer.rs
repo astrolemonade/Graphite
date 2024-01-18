@@ -1,7 +1,7 @@
 mod quad;
 
 use crate::raster::{BlendMode, Image, ImageFrame};
-use crate::transform::Transform;
+use crate::transform::{Transform, TransformMut};
 use crate::uuid::{generate_uuid, ManipulatorGroupId};
 use crate::{vector::VectorData, Artboard, Color, GraphicElement, GraphicGroup};
 pub use quad::Quad;
