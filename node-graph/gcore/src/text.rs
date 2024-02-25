@@ -1,8 +1,11 @@
 mod font_cache;
 mod to_path;
 
-use crate::application_io::EditorApi;
+use core::future::Future;
+
+use crate::vector::VectorData;
 use crate::Color;
+use crate::{application_io::EditorApi, transform::Footprint};
 use alloc::sync::Arc;
 use dyn_any::{DynAny, StaticType};
 pub use font_cache::*;
@@ -102,6 +105,12 @@ pub struct TextGeneratorNode<RichTextNode, LineLengthNode, PathNode> {
 }
 
 #[node_fn(TextGeneratorNode)]
-fn generate_text<'a: 'input, T>(editor: EditorApi<'a, T>, text: RichText, line_length: f64, path: crate::vector::VectorData) -> crate::vector::VectorData {
+async fn generate_text<'a: 'input, T, FV: Future<Output = VectorData>>(
+	editor: EditorApi<'a, T>,
+	text: RichText,
+	line_length: f64,
+	path: impl Node<Footprint, Output = FV>,
+) -> crate::vector::VectorData {
+	let path = self.path.eval(editor.render_config.viewport).await;
 	crate::vector::VectorData::from_subpaths(rich_text_to_path(&text, line_length, &path, editor.font_cache))
 }

@@ -1,5 +1,6 @@
 use crate::text::to_path::cosmic_text::Edit;
 use crate::{uuid::ManipulatorGroupId, vector::VectorData};
+use alloc::sync::Arc;
 use bezier_rs::{ManipulatorGroup, Subpath, SubpathTValue};
 use glam::{DAffine2, DVec2, Vec2};
 pub extern crate cosmic_text;
@@ -86,7 +87,14 @@ pub fn buffer_to_path(buffer: &cosmic_text::Buffer, font_system: &mut cosmic_tex
 		italic: None,
 		id: ManipulatorGroupId::ZERO,
 	};
-	let path = path.subpaths.iter().find(|subpath| !subpath.is_empty());
+	let subpath = path
+		.stroke_bézier_paths()
+		.map(|mut subpath| {
+			subpath.apply_transform(path.transform);
+
+			(subpath.iter().map(|bezier| bezier.length(None)).collect::<Vec<f64>>(), subpath)
+		})
+		.find(|(_, subpath)| !subpath.is_empty());
 
 	// Inspect the output runs
 	let mut offset;
@@ -103,15 +111,28 @@ pub fn buffer_to_path(buffer: &cosmic_text::Buffer, font_system: &mut cosmic_tex
 			builder.italic = span.italic.map(|x| x as f64);
 
 			let glyph_offset = DVec2::new(glyph_position.x_offset as f64, glyph_position.y_offset as f64) + span.kerning.as_dvec2() + offset;
-			if let Some(path) = path {
+			if let Some((lengths, subpath)) = &subpath {
+				let total_length: f64 = lengths.iter().sum();
+				let eval_euclidean = |dist: f64| {
+					let (segment_index, segment_t_euclidean) = subpath.global_euclidean_to_local_euclidean(dist / total_length, lengths.as_slice(), total_length);
+					let segment = subpath.get_segment(segment_index).unwrap();
+					let segment_t_parametric = segment.euclidean_to_parametric_with_total_length(segment_t_euclidean, 0., lengths[segment_index]);
+					segment.evaluate(bezier_rs::TValue::Parametric(segment_t_parametric))
+				};
+
 				// Text on path based on https://svgwg.org/svg2-draft/text.html#TextpathLayoutRules
-				let left_x = glyph_position.x as f64;
+				let left_x = glyph_position.x as f64 + glyph_offset.x;
 				let right_x = left_x + glyph_position.w as f64;
 				let centre_x = (left_x + right_x) / 2.;
-				let left = path.evaluate(SubpathTValue::GlobalEuclidean(left_x));
-				let right = path.evaluate(SubpathTValue::GlobalEuclidean(right_x));
-				let centre = path.evaluate(SubpathTValue::GlobalEuclidean(centre_x));
-				builder.transform = DAffine2::from_scale_angle_translation(DVec2::ONE, DVec2::X.angle_between(right - left), centre) * DAffine2::from_translation(glyph_offset);
+				if right_x >= total_length {
+					break;
+				}
+				let left = eval_euclidean(left_x);
+				let right = eval_euclidean(right_x);
+				let centre = eval_euclidean(centre_x);
+				let angle = DVec2::X.angle_between(right - left);
+				let angle = if angle.is_finite() { angle } else { 0. };
+				builder.transform = DAffine2::from_translation(centre) * DAffine2::from_angle(angle);
 			} else {
 				let pos = DVec2::new(glyph_position.x as f64, glyph_position.y as f64 + run.line_y as f64);
 				builder.transform = DAffine2::from_translation(pos + glyph_offset);
