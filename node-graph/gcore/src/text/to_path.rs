@@ -132,7 +132,7 @@ pub fn buffer_to_path(buffer: &cosmic_text::Buffer, font_system: &mut cosmic_tex
 				let centre = eval_euclidean(centre_x);
 				let angle = DVec2::X.angle_between(right - left);
 				let angle = if angle.is_finite() { angle } else { 0. };
-				builder.transform = DAffine2::from_translation(centre) * DAffine2::from_angle(angle);
+				builder.transform = DAffine2::from_translation(centre) * DAffine2::from_angle(angle) * DAffine2::from_translation(DVec2::X * (left_x - centre_x));
 			} else {
 				let pos = DVec2::new(glyph_position.x as f64, glyph_position.y as f64 + run.line_y as f64);
 				builder.transform = DAffine2::from_translation(pos + glyph_offset);
